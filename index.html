@@ -1,0 +1,548 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caso Clínico Interativo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #333;
+        }
+        p, ul {
+            line-height: 1.6;
+            color: #555;
+        }
+        .hidden {
+            display: none;
+        }
+        input, select, button {
+            padding: 10px;
+            margin: 10px 0;
+            width: 100%;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .error {
+            color: red;
+            font-size: 0.9em;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        .master-panel {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 20px;
+            background-color: #f9f9f9;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .progress {
+            height: 20px;
+            background-color: #007BFF;
+            border-radius: 5px;
+            width: 0;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            text-align: center;
+            margin-top: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Login -->
+        <div id="login-page">
+            <h1>Caso Clínico Interativo</h1>
+            <p>Faça login para participar:</p>
+            <input type="text" id="username" placeholder="Usuário" required>
+            <input type="password" id="password" placeholder="Senha" required>
+            <button onclick="login()">Entrar</button>
+            <p class="error" id="login-error"></p>
+        </div>
+
+        <!-- Entrada de Alias -->
+        <div id="alias-page" class="hidden">
+            <h1>Caso Clínico Interativo</h1>
+            <p>Insira seu alias ou apelido:</p>
+            <input type="text" id="alias" placeholder="Seu alias" required>
+            <button onclick="submitAlias()">Continuar</button>
+            <p class="error" id="alias-error"></p>
+        </div>
+
+        <!-- Caso Clínico -->
+        <div id="case-page" class="hidden">
+            <h1>Caso Clínico</h1>
+            <p><strong>Paciente</strong>: Mulher, 48 anos, estudante de odontologia.</p>
+            <p><strong>Queixa</strong>: Tremores de repouso e intenção no membro superior direito há 2 anos.</p>
+            <p><strong>Exames</strong>: Imagem normal, sem lesões. Exame físico sem alterações em força muscular ou reflexos.</p>
+            <p><strong>Outros</strong>: Dor progressiva ao sustentar o braço contra a gravidade. Impacto funcional impede trabalho, causando dificuldades financeiras para custear a faculdade.</p>
+            <button onclick="showForm()">Responder</button>
+        </div>
+
+        <!-- Formulário Etapa 1: Diagnóstico Sindrômico -->
+        <div id="form-syndromic" class="hidden">
+            <h2>Etapa 1 de 3: Diagnóstico Sindrômico</h2>
+            <div class="progress-bar">
+                <div class="progress" style="width: 33.33%"></div>
+            </div>
+            <p class="progress-text">Etapa 1 de 3</p>
+            <form id="syndromic-form">
+                <label for="syndromic">Diagnóstico Sindrômico:</label>
+                <select id="syndromic" required>
+                    <option value="">Selecione</option>
+                    <option value="Síndrome do Neurônio Motor Superior">Síndrome do Neurônio Motor Superior</option>
+                    <option value="Síndrome do Neurônio Motor Inferior">Síndrome do Neurônio Motor Inferior</option>
+                    <option value="Síndrome Extrapiramidal">Síndrome Extrapiramidal</option>
+                    <option value="Síndrome Cerebelar">Síndrome Cerebelar</option>
+                    <option value="Síndrome de Alteração do Nível de Consciência">Síndrome de Alteração do Nível de Consciência</option>
+                    <option value="Síndrome Epiléptica">Síndrome Epiléptica</option>
+                    <option value="Síndrome Demencial">Síndrome Demencial</option>
+                    <option value="Síndrome de Compressão Medular">Síndrome de Compressão Medular</option>
+                    <option value="Síndrome de Neuropatia Periférica">Síndrome de Neuropatia Periférica</option>
+                    <option value="Síndrome Miofascial ou Miopática">Síndrome Miofascial ou Miopática</option>
+                    <option value="Síndrome de Dor Neuropática">Síndrome de Dor Neuropática</option>
+                    <option value="Síndrome de Hipertensão Intracraniana">Síndrome de Hipertensão Intracraniana</option>
+                </select>
+                <button type="submit" onclick="submitSyndromic()">Enviar Resposta</button>
+            </form>
+        </div>
+
+        <!-- Formulário Etapa 2: Diagnóstico Topográfico -->
+        <div id="form-topographic" class="hidden">
+            <h2>Etapa 2 de 3: Diagnóstico Topográfico</h2>
+            <div class="progress-bar">
+                <div class="progress" style="width: 66.66%"></div>
+            </div>
+            <p class="progress-text">Etapa 2 de 3</p>
+            <form id="topographic-form">
+                <label for="topographic">Diagnóstico Topográfico:</label>
+                <select id="topographic" required>
+                    <option value="">Selecione</option>
+                    <option value="Lesão Cortical (Córtex Cerebral)">Lesão Cortical (Córtex Cerebral)</option>
+                    <option value="Lesão Subcortical (Gânglios da Base, Tálamo)">Lesão Subcortical (Gânglios da Base, Tálamo)</option>
+                    <option value="Lesão do Tronco Encefálico">Lesão do Tronco Encefálico</option>
+                    <option value="Lesão Cerebelar">Lesão Cerebelar</option>
+                    <option value="Lesão Medular (Medula Espinhal)">Lesão Medular (Medula Espinhal)</option>
+                    <option value="Lesão de Raiz Nervosa (Radiculopatia)">Lesão de Raiz Nervosa (Radiculopatia)</option>
+                    <option value="Lesão de Plexo Nervoso (Plexopatia)">Lesão de Plexo Nervoso (Plexopatia)</option>
+                    <option value="Lesão de Nervo Periférico (Neuropatia)">Lesão de Nervo Periférico (Neuropatia)</option>
+                    <option value="Lesão Neuromuscular (Junção Neuromuscular)">Lesão Neuromuscular (Junção Neuromuscular)</option>
+                    <option value="Lesão Muscular (Miopatia)">Lesão Muscular (Miopatia)</option>
+                </select>
+                <button type="submit" onclick="submitTopographic()">Enviar Resposta</button>
+            </form>
+        </div>
+
+        <!-- Formulário Etapa 3: Diagnóstico Etiológico, Exames e Tratamento -->
+        <div id="form-final" class="hidden">
+            <h2>Etapa 3 de 3: Diagnóstico Etiológico, Exames e Tratamento</h2>
+            <div class="progress-bar">
+                <div class="progress" style="width: 100%"></div>
+            </div>
+            <p class="progress-text">Etapa 3 de 3</p>
+            <form id="final-form">
+                <label for="etiologic">Diagnóstico Etiológico:</label>
+                <select id="etiologic" required onchange="toggleOtherField()">
+                    <option value="">Selecione</option>
+                    <option value="Doença de Parkinson">Doença de Parkinson</option>
+                    <option value="Tremor Essencial">Tremor Essencial</option>
+                    <option value="Distonia">Distonia</option>
+                    <option value="Tremor Fisiológico Exacerbado">Tremor Fisiológico Exacerbado</option>
+                    <option value="Tremor Cerebelar">Tremor Cerebelar</option>
+                    <option value="Tremor Induzido por Medicamentos">Tremor Induzido por Medicamentos</option>
+                    <option value="Tremor Psicogênico">Tremor Psicogênico</option>
+                    <option value="Doença de Wilson">Doença de Wilson</option>
+                    <option value="Hipertireoidismo">Hipertireoidismo</option>
+                    <option value="Neuropatia Periférica">Neuropatia Periférica</option>
+                    <option value="Intoxicação por Álcool ou Abstinência">Intoxicação por Álcool ou Abstinência</option>
+                    <option value="Esclerose Múltipla">Esclerose Múltipla</option>
+                    <option value="Paralisia Supranuclear Progressiva">Paralisia Supranuclear Progressiva</option>
+                    <option value="Ataxia Espinocerebelar">Ataxia Espinocerebelar</option>
+                    <option value="Tremor Ortostático Primário">Tremor Ortostático Primário</option>
+                    <option value="Tremor de Holmes">Tremor de Holmes</option>
+                    <option value="Transtorno Neurológico Funcional">Transtorno Neurológico Funcional</option>
+                    <option value="Outro">Outro</option>
+                </select>
+                <input type="text" id="etiologic-other" placeholder="Especifique o diagnóstico" class="hidden">
+
+                <label for="exams">Exames Complementares:</label>
+                <select id="exams" multiple required>
+                    <option value="Ressonância Magnética (RM) de encéfalo">Ressonância Magnética (RM) de encéfalo</option>
+                    <option value="Ressonância Magnética (RM) de coluna">Ressonância Magnética (RM) de coluna</option>
+                    <option value="Tomografia Computadorizada (TC) de crânio">Tomografia Computadorizada (TC) de crânio</option>
+                    <option value="Tomografia Computadorizada (TC) de coluna">Tomografia Computadorizada (TC) de coluna</option>
+                    <option value="Eletroencefalograma (EEG)">Eletroencefalograma (EEG)</option>
+                    <option value="Eletroneuromiografia (ENMG)">Eletroneuromiografia (ENMG)</option>
+                    <option value="Potenciais Evocados (visual, auditivo, somatossensorial)">Potenciais Evocados (visual, auditivo, somatossensorial)</option>
+                    <option value="Punção lombar (análise de líquor)">Punção lombar (análise de líquor)</option>
+                    <option value="Doppler transcraniano">Doppler transcraniano</option>
+                    <option value="Ultrassonografia de carótidas e vertebrais">Ultrassonografia de carótidas e vertebrais</option>
+                    <option value="Angio-TC de encéfalo">Angio-TC de encéfalo</option>
+                    <option value="Angio-RM de encéfalo">Angio-RM de encéfalo</option>
+                    <option value="Cintilografia cerebral (SPECT/PET)">Cintilografia cerebral (SPECT/PET)</option>
+                    <option value="Testes neuropsicológicos">Testes neuropsicológicos</option>
+                    <option value="Exames de sangue (hemograma, eletrólitos, função hepática/renal)">Exames de sangue (hemograma, eletrólitos, função hepática/renal)</option>
+                    <option value="Dosagem de vitamina B12 e ácido fólico">Dosagem de vitamina B12 e ácido fólico</option>
+                    <option value="Sorologias para infecções (HIV, sífilis, neurocisticercose)">Sorologias para infecções (HIV, sífilis, neurocisticercose)</option>
+                    <option value="Painel autoimune (anticorpos antinucleares, anti-aquaporina-4)">Painel autoimune (anticorpos antinucleares, anti-aquaporina-4)</option>
+                    <option value="Testes genéticos (para doenças neurodegenerativas ou neuromusculares)">Testes genéticos (para doenças neurodegenerativas ou neuromusculares)</option>
+                    <option value="Biópsia muscular ou de nervo">Biópsia muscular ou de nervo</option>
+                </select>
+
+                <label for="treatment">Opções de Tratamento:</label>
+                <select id="treatment" multiple required>
+                    <option value="Propranolol">Propranolol</option>
+                    <option value="Primidona">Primidona</option>
+                    <option value="Toxina Botulínica">Toxina Botulínica</option>
+                    <option value="Terapia Ocupacional">Terapia Ocupacional</option>
+                    <option value="Estimulação Cerebral Profunda">Estimulação Cerebral Profunda</option>
+                </select>
+
+                <button type="submit" onclick="submitFinal()">Enviar Resposta</button>
+            </form>
+        </div>
+
+        <!-- Resultados -->
+        <div id="results-page" class="hidden">
+            <h1>Resultados</h1>
+            <div class="progress-bar">
+                <div class="progress" id="progress-bar"></div>
+            </div>
+            <p class="progress-text" id="progress-text"></p>
+            <div id="results-content"></div>
+            <div id="master-controls" class="hidden">
+                <button id="show-results-btn" onclick="showResults()" disabled>Exibir Resultados</button>
+            </div>
+            <div id="master-panel" class="master-panel hidden">
+                <h2>Painel do Mestre: Respostas em Tempo Real</h2>
+                <div id="master-responses"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Usuários e senhas (simples, sem backend)
+        const users = {
+            "neuro1": "senha123",
+            "neuro2": "senha456",
+            "neuro3": "senha789",
+            "mestre": "mestre123"
+        };
+
+        let currentUser = null;
+        let currentAlias = null;
+        let isMaster = false;
+        let responses = JSON.parse(localStorage.getItem("responses")) || {};
+        let currentStep = localStorage.getItem("currentStep") ? parseInt(localStorage.getItem("currentStep")) : 1;
+        const steps = [
+            { id: 1, name: "Diagnóstico Sindrômico", field: "syndromic", form: "form-syndromic" },
+            { id: 2, name: "Diagnóstico Topográfico", field: "topographic", form: "form-topographic" },
+            { id: 3, name: "Diagnóstico Etiológico, Exames e Tratamento", fields: ["etiologic", "exams", "treatment"], form: "form-final" }
+        ];
+
+        function login() {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+            const error = document.getElementById("login-error");
+
+            if (users[username] && users[username] === password) {
+                currentUser = username;
+                isMaster = username === "mestre";
+                document.getElementById("login-page").classList.add("hidden");
+                document.getElementById("alias-page").classList.remove("hidden");
+                error.textContent = "";
+            } else {
+                error.textContent = "Usuário ou senha incorretos!";
+            }
+        }
+
+        function submitAlias() {
+            const alias = document.getElementById("alias").value.trim();
+            const error = document.getElementById("alias-error");
+
+            if (alias) {
+                currentAlias = alias;
+                document.getElementById("alias-page").classList.add("hidden");
+                if (isMaster) {
+                    showMasterView();
+                } else {
+                    document.getElementById("case-page").classList.remove("hidden");
+                }
+                error.textContent = "";
+            } else {
+                error.textContent = "Por favor, insira um alias!";
+            }
+        }
+
+        function showForm() {
+            document.getElementById("case-page").classList.add("hidden");
+            const step = steps.find(s => s.id === currentStep);
+            document.getElementById(step.form).classList.remove("hidden");
+        }
+
+        function toggleOtherField() {
+            const etiologic = document.getElementById("etiologic").value;
+            const otherField = document.getElementById("etiologic-other");
+            if (etiologic === "Outro") {
+                otherField.classList.remove("hidden");
+                otherField.required = true;
+            } else {
+                otherField.classList.add("hidden");
+                otherField.required = false;
+                otherField.value = "";
+            }
+        }
+
+        function submitSyndromic() {
+            const syndromic = document.getElementById("syndromic").value;
+            if (!syndromic) {
+                alert("Selecione um diagnóstico sindrômico!");
+                return;
+            }
+
+            responses[currentUser] = { ...responses[currentUser], alias: currentAlias, syndromic };
+            localStorage.setItem("responses", JSON.stringify(responses));
+            document.getElementById("form-syndromic").classList.add("hidden");
+            waitForResults();
+        }
+
+        function submitTopographic() {
+            const topographic = document.getElementById("topographic").value;
+            if (!topographic) {
+                alert("Selecione um diagnóstico topográfico!");
+                return;
+            }
+
+            responses[currentUser] = { ...responses[currentUser], topographic };
+            localStorage.setItem("responses", JSON.stringify(responses));
+            document.getElementById("form-topographic").classList.add("hidden");
+            waitForResults();
+        }
+
+        function submitFinal() {
+            let etiologic = document.getElementById("etiologic").value;
+            const etiologicOther = document.getElementById("etiologic-other").value;
+            const exams = Array.from(document.getElementById("exams").selectedOptions).map(opt => opt.value);
+            const treatment = Array.from(document.getElementById("treatment").selectedOptions).map(opt => opt.value);
+
+            if (!etiologic || exams.length === 0 || treatment.length === 0) {
+                alert("Preencha todos os campos!");
+                return;
+            }
+
+            if (etiologic === "Outro" && !etiologicOther) {
+                alert("Especifique o diagnóstico para 'Outro'!");
+                return;
+            }
+
+            if (etiologic === "Outro") {
+                etiologic = `Outro: ${etiologicOther}`;
+            }
+
+            responses[currentUser] = { ...responses[currentUser], etiologic, exams, treatment };
+            localStorage.setItem("responses", JSON.stringify(responses));
+            document.getElementById("form-final").classList.add("hidden");
+            waitForResults();
+        }
+
+        function waitForResults() {
+            document.getElementById("results-page").classList.remove("hidden");
+            const resultsContent = document.getElementById("results-content");
+            resultsContent.innerHTML = `<p>Aguardando todos os participantes responderem...</p>`;
+            if (isMaster) {
+                showMasterView();
+            }
+            checkAllResponses();
+        }
+
+        function checkAllResponses() {
+            const participantCount = Object.keys(responses).filter(u => u !== "mestre").length;
+            const showResultsBtn = document.getElementById("show-results-btn");
+            const step = steps.find(s => s.id === currentStep);
+
+            if (participantCount === 3 && isMaster) {
+                showResultsBtn.disabled = false;
+            }
+
+            if (isMaster) {
+                showMasterView();
+            }
+
+            updateProgressBar();
+        }
+
+        function showResults() {
+            const resultsContent = document.getElementById("results-content");
+            const step = steps.find(s => s.id === currentStep);
+            let html = `<h2>Etapa ${currentStep} de 3: ${step.name}</h2>`;
+
+            if (currentStep === 3) {
+                for (const user in responses) {
+                    if (user !== "mestre") {
+                        html += `
+                            <div class="results">
+                                <h3>${responses[user].alias}</h3>
+                                <p><strong>Diagnóstico Etiológico</strong>: ${responses[user].etiologic}</p>
+                                <p><strong>Exames Complementares</strong>: ${responses[user].exams.join(", ")}</p>
+                                <p><strong>Tratamento</strong>: ${responses[user].treatment.join(", ")}</p>
+                            </div>
+                        `;
+                    }
+                }
+            } else {
+                const field = step.field;
+                for (const user in responses) {
+                    if (user !== "mestre") {
+                        html += `
+                            <div class="results">
+                                <h3>${responses[user].alias}</h3>
+                                <p><strong>${step.name}</strong>: ${responses[user][field]}</p>
+                            </div>
+                        `;
+                    }
+                }
+            }
+
+            resultsContent.innerHTML = html;
+            document.getElementById("master-controls").classList.add("hidden");
+
+            if (currentStep < steps.length) {
+                currentStep++;
+                localStorage.setItem("currentStep", currentStep);
+                setTimeout(() => {
+                    document.getElementById("results-page").classList.add("hidden");
+                    if (!isMaster) {
+                        document.getElementById("case-page").classList.remove("hidden");
+                    } else {
+                        showMasterView();
+                    }
+                }, 3000); // Exibe resultados por 3 segundos antes de avançar
+            }
+        }
+
+        function showMasterView() {
+            const masterPanel = document.getElementById("master-panel");
+            const masterResponses = document.getElementById("master-responses");
+            let html = `<p>Participantes que responderam: ${Object.keys(responses).filter(u => u !== "mestre").length}/3</p>`;
+
+            for (const user in responses) {
+                if (user !== "mestre") {
+                    html += `
+                        <div class="results">
+                            <h3>${responses[user].alias}</h3>
+                            ${responses[user].syndromic ? `<p><strong>Diagnóstico Sindrômico</strong>: ${responses[user].syndromic}</p>` : ""}
+                            ${responses[user].topographic ? `<p><strong>Diagnóstico Topográfico</strong>: ${responses[user].topographic}</p>` : ""}
+                            ${responses[user].etiologic ? `<p><strong>Diagnóstico Etiológico</strong>: ${responses[user].etiologic}</p>` : ""}
+                            ${responses[user].exams ? `<p><strong>Exames Complementares</strong>: ${responses[user].exams.join(", ")}</p>` : ""}
+                            ${responses[user].treatment ? `<p><strong>Tratamento</strong>: ${responses[user].treatment.join(", ")}</p>` : ""}
+                        </div>
+                    `;
+                }
+            }
+
+            masterResponses.innerHTML = html;
+            document.getElementById("results-page").classList.remove("hidden");
+            masterPanel.classList.remove("hidden");
+            if (isMaster) {
+                document.getElementById("master-controls").classList.remove("hidden");
+            }
+            updateProgressBar();
+        }
+
+        function updateProgressBar() {
+            const progressBar = document.getElementById("progress-bar");
+            const progressText = document.getElementById("progress-text");
+            const step = steps.find(s => s.id === currentStep);
+            progressBar.style.width = `${(currentStep / 3) * 100}%`;
+            progressText.textContent = `Etapa ${currentStep} de 3`;
+        }
+
+        function resetGame() {
+            localStorage.removeItem("responses");
+            localStorage.removeItem("currentStep");
+            responses = {};
+            currentUser = null;
+            currentAlias = null;
+            isMaster = false;
+            currentStep = 1;
+            document.getElementById("results-page").classList.add("hidden");
+            document.getElementById("login-page").classList.remove("hidden");
+            document.getElementById("username").value = "";
+            document.getElementById("password").value = "";
+            document.getElementById("alias").value = "";
+        }
+    </script>
+</body>
+</html>
